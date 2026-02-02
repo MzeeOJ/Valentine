@@ -9,19 +9,21 @@
     *{box-sizing:border-box}
     html,body{height:100%;margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,'Helvetica Neue',Arial}
     body{background:linear-gradient(180deg,var(--bg),#ffeef2);display:flex;align-items:center;justify-content:center;padding:24px}
-    .card{width:100%;max-width:560px;background:var(--card);border-radius:18px;box-shadow:0 12px 30px rgba(0,0,0,0.12);padding:28px;position:relative;overflow:hidden}
+    .card{width:100%;max-width:560px;background:var(--card);border-radius:18px;box-shadow:0 12px 30px rgba(0,0,0,0.12);padding:28px;position:relative;overflow:hidden;min-height:400px}
     h1{margin:0 0 12px;font-size:28px;color:var(--accent-dark)}
     p.lead{margin:0 0 18px;color:var(--muted)}
-    .buttons{display:flex;gap:14px}
-    button{font-size:16px;padding:12px 18px;border-radius:12px;border:0;cursor:pointer}
+    .buttons{display:flex;gap:14px;position:relative;min-height:48px}
+    button{font-size:16px;padding:12px 18px;border-radius:12px;border:0;cursor:pointer;transition:transform 0.2s}
+    button:hover{transform:scale(1.05)}
     .yes{background:linear-gradient(90deg,var(--accent),#ff86a7);color:white;box-shadow:0 6px 18px rgba(255,71,111,0.28)}
+    .yes.big{font-size:32px;padding:20px 40px;font-weight:bold;cursor:pointer}
     .no{background:transparent;border:2px solid var(--accent);color:var(--accent);}
-    .no.floating{position:absolute;right:22px;bottom:22px}
+    .no.floating{position:absolute;transition:none}
 
     .heart{position:absolute;right:-60px;top:-60px;width:200px;height:200px;opacity:0.12;transform:rotate(15deg);filter:blur(1px)}
 
     .message-form{margin-top:18px;display:none}
-    .message-form textarea{width:100%;min-height:88px;border-radius:10px;padding:12px;border:1px solid #eee;font-size:15px}
+    .message-form textarea{width:100%;min-height:88px;border-radius:10px;padding:12px;border:1px solid #eee;font-size:15px;resize:vertical}
     .actions{display:flex;gap:8px;margin-top:10px}
     .copy{background:#fff;border:1px solid #ddd;padding:10px;border-radius:10px}
 
@@ -29,6 +31,19 @@
 
     /* confetti canvas overlay */
     #confetti-canvas{position:fixed;left:0;top:0;width:100%;height:100%;pointer-events:none;z-index:9999}
+
+    /* Flying kiss animation */
+    .kiss-emoji{
+      position:fixed;
+      font-size:48px;
+      pointer-events:none;
+      z-index:10000;
+      animation:flyKiss 1.5s ease-out forwards
+    }
+    @keyframes flyKiss{
+      0%{transform:translate(0,0) scale(1) rotate(0deg);opacity:1}
+      100%{transform:translate(var(--kiss-x, 200px), var(--kiss-y, -300px)) scale(2) rotate(360deg);opacity:0}
+    }
 
     @media (max-width:480px){h1{font-size:22px}.card{padding:18px}}
   </style>
@@ -40,7 +55,7 @@
       <path fill="var(--accent)" d="M23.6 0c-2.7 0-5 1.5-6.1 3.7C16.4 1.5 14.1 0 11.4 0 5.6 0 .9 4.7 .9 10.5c0 8.1 10.2 13.6 15.2 18.5 5-4.9 15.2-10.4 15.2-18.5C31.1 4.7 26.4 0 20.6 0z"/>
     </svg>
 
-    <h1>Will you be my Valentine?</h1>
+    <h1>Meghan Katarina, will you be my Valentine?</h1>
     <p class="lead">I made this just for you. Pick an answer — and if your heart says yes, there's a little surprise. 💌</p>
 
     <div class="buttons" id="btnWrap">
@@ -49,16 +64,15 @@
     </div>
 
     <div class="message-form" id="messageForm">
-      <label for="note" style="display:block;margin-bottom:8px;color:var(--muted)">Write a short message (optional)</label>
+      <label for="note" style="display:block;margin-bottom:8px;color:var(--muted)">To the Love of My Life</label>
       <textarea id="note" placeholder="Type something sweet...">Can't wait to spend time with you 💕</textarea>
       <div class="actions">
-        <button id="sendBtn" class="yes">Send with a kiss</button>
-        <button id="copyBtn" class="copy">Copy message</button>
+        <button id="sendBtn" class="yes">Get a kiss 💋</button>
       </div>
-      <p class="small">Tip: You can customize the message above before sending.</p>
+      <p class="small">Tip: You are the loveliest in the world.</p>
     </div>
 
-    <p class="small">Made with ♥ — you can edit colors and text in the HTML file.</p>
+    <p class="small">Made with ♥.</p>
   </div>
 
   <script>
@@ -68,116 +82,217 @@
     const messageForm = document.getElementById('messageForm');
     const btnWrap = document.getElementById('btnWrap');
 
-    let dodgeLevel = 1;
+    let dodgeLevel = 0;
+    let isFloating = false;
+    let hasSwapped = false;
+    const originalYesText = "Yes — I will 💖";
+    const originalNoText = "No…";
 
     function moveNoButton() {
-      const wrap = btnWrap.getBoundingClientRect();
+      if (!isFloating) {
+        // First time - make it floating
+        noBtn.classList.add('floating');
+        isFloating = true;
+      }
+
+      const card = document.querySelector('.card');
+      const cardRect = card.getBoundingClientRect();
       const noRect = noBtn.getBoundingClientRect();
-      const btnW = noRect.width, btnH = noRect.height;
+      
+      const padding = 20;
+      const maxX = cardRect.width - noRect.width - padding;
+      const maxY = cardRect.height - noRect.height - padding;
 
-      // Random position inside the card but avoid overlapping the yes button
-      const padding = 12;
-      const cardRect = document.querySelector('.card').getBoundingClientRect();
-      const maxX = Math.max(0, cardRect.width - btnW - padding);
-      const maxY = Math.max(0, cardRect.height - btnH - padding);
+      // Generate random position
+      let x = Math.random() * Math.max(0, maxX);
+      let y = Math.random() * Math.max(0, maxY);
+      
+      // Make sure it's not too close to the Yes button
+      const yesRect = yesBtn.getBoundingClientRect();
+      const yesRelativeX = yesRect.left - cardRect.left;
+      const yesRelativeY = yesRect.top - cardRect.top;
+      
+      // If too close to Yes button, move it away
+      if (Math.abs(x - yesRelativeX) < 150 && Math.abs(y - yesRelativeY) < 80) {
+        x = Math.random() > 0.5 ? Math.max(0, maxX - 50) : padding;
+        y = Math.random() * Math.max(0, maxY);
+      }
 
-      const x = Math.floor(Math.random() * maxX);
-      const y = Math.floor((Math.random() * maxY) + (cardRect.top < 0 ? 0 : 0));
-
-      noBtn.style.position = 'absolute';
       noBtn.style.left = x + 'px';
       noBtn.style.top = y + 'px';
-      noBtn.classList.add('floating');
 
-      dodgeLevel = Math.min(6, dodgeLevel + 1);
+      dodgeLevel++;
+
+      // Occasionally swap button labels to confuse (only once)
+      if (dodgeLevel > 3 && !hasSwapped && Math.random() < 0.3) {
+        hasSwapped = true;
+        yesBtn.textContent = originalNoText;
+        noBtn.textContent = originalYesText;
+        
+        setTimeout(() => {
+          yesBtn.textContent = originalYesText;
+          noBtn.textContent = originalNoText;
+          hasSwapped = false;
+        }, 1000);
+      }
     }
 
-    // Desktop: move on mouseenter. Mobile: move on touchstart.
+    // Desktop: move on mouseenter
     noBtn.addEventListener('mouseenter', moveNoButton);
-    noBtn.addEventListener('touchstart', (e)=>{ e.preventDefault(); moveNoButton(); });
+    
+    // Mobile: move on touchstart (with passive listener to allow scrolling)
+    noBtn.addEventListener('touchstart', (e) => {
+      moveNoButton();
+    }, { passive: true });
 
     // If user manages to click No, show a playful follow-up
-    noBtn.addEventListener('click', (e)=>{
+    noBtn.addEventListener('click', (e) => {
       e.preventDefault();
-      alert("Oh no — the No button escaped! Maybe try the Yes? 😇");
+      if (dodgeLevel < 5) {
+        alert("Oh no — the No button escaped! Maybe try the Yes? 😇");
+        moveNoButton();
+      } else {
+        alert("You're very persistent! Are you sure you don't want to say yes? 💕");
+      }
     });
 
     // Yes behavior: confetti + reveal form
-    yesBtn.addEventListener('click', ()=>{
-      playConfetti();
-      messageForm.style.display = 'block';
-      yesBtn.textContent = 'Yay! 💖';
-      // scroll into view on small screens
-      messageForm.scrollIntoView({behavior:'smooth',block:'center'});
+    yesBtn.addEventListener('click', () => {
+      if (!messageForm.style.display || messageForm.style.display === 'none') {
+        // First click - show message form
+        playConfetti();
+        messageForm.style.display = 'block';
+        yesBtn.textContent = 'Yay! 💖';
+        yesBtn.classList.add('big');
+        noBtn.style.display = 'none';
+        
+        // scroll into view on small screens
+        setTimeout(() => {
+          messageForm.scrollIntoView({behavior:'smooth',block:'center'});
+        }, 100);
+      } else {
+        // Subsequent clicks - just trigger confetti
+        playConfetti();
+      }
     });
 
-    // Copy message
-    document.getElementById('copyBtn').addEventListener('click', async ()=>{
-      const text = document.getElementById('note').value;
-      try{ await navigator.clipboard.writeText(text); alert('Message copied to clipboard!'); }
-      catch(e){ alert('Copy failed — please select and copy manually.'); }
-    });
-
-    // Send button — playful simulation of sending
-    document.getElementById('sendBtn').addEventListener('click', ()=>{
-      const txt = document.getElementById('note').value;
+    // Get a kiss button — triggers flying kiss emojis
+    document.getElementById('sendBtn').addEventListener('click', () => {
+      const txt = document.getElementById('note').value.trim();
+      if (!txt) {
+        alert('Please write a message first!');
+        return;
+      }
+      
+      // Create multiple flying kiss emojis
+      for (let i = 0; i < 5; i++) {
+        setTimeout(() => {
+          const kiss = document.createElement('div');
+          kiss.className = 'kiss-emoji';
+          kiss.textContent = '💋';
+          kiss.style.left = (window.innerWidth / 2 - 24) + 'px';
+          kiss.style.top = (window.innerHeight / 2) + 'px';
+          
+          // Randomize the animation direction
+          const angle = -60 + Math.random() * 120;
+          const distance = 200 + Math.random() * 100;
+          const tx = Math.cos(angle * Math.PI / 180) * distance;
+          const ty = Math.sin(angle * Math.PI / 180) * distance - 300;
+          
+          kiss.style.setProperty('--kiss-x', tx + 'px');
+          kiss.style.setProperty('--kiss-y', ty + 'px');
+          
+          document.body.appendChild(kiss);
+          
+          setTimeout(() => kiss.remove(), 1500);
+        }, i * 150);
+      }
+      
       playConfetti();
-      alert('Sent! 💌\n\nMessage:\n"' + txt + '"');
+      setTimeout(() => {
+        alert('Sent with love! 💋💕\n\nYour message:\n"' + txt + '"');
+      }, 800);
     });
 
     /* Simple confetti animation (small, dependency-free) */
-    function playConfetti(){
+    let confettiActive = false;
+    
+    function playConfetti() {
+      if (confettiActive) return; // Prevent multiple simultaneous animations
+      confettiActive = true;
+      
       const canvas = document.getElementById('confetti-canvas');
       const ctx = canvas.getContext('2d');
       resizeCanvas();
+      
       const W = canvas.width, H = canvas.height;
       const pieces = [];
       const count = 60;
       const colors = ['#ff4d6d','#ff9bb3','#ffd166','#ff7ab6','#ffd1e6'];
-      for(let i=0;i<count;i++){
-        pieces.push({x:Math.random()*W,y:Math.random()*H-50,vy:1+Math.random()*4, vx:(Math.random()-0.5)*2, size:6+Math.random()*8, color:colors[Math.floor(Math.random()*colors.length)], rot:Math.random()*360, vr: (Math.random()-0.5)*8});
+      
+      for (let i = 0; i < count; i++) {
+        pieces.push({
+          x: Math.random() * W,
+          y: -50 + Math.random() * -100, // Start above screen
+          vy: 1 + Math.random() * 4,
+          vx: (Math.random() - 0.5) * 2,
+          size: 6 + Math.random() * 8,
+          color: colors[Math.floor(Math.random() * colors.length)],
+          rot: Math.random() * 360,
+          vr: (Math.random() - 0.5) * 8
+        });
       }
+      
       let time = 0;
-      const id = setInterval(()=>{
-        time++; ctx.clearRect(0,0,W,H);
-        for(const p of pieces){
-          p.x += p.vx; p.y += p.vy; p.rot += p.vr; p.vy += 0.05; // gravity
+      const id = setInterval(() => {
+        time++;
+        ctx.clearRect(0, 0, W, H);
+        
+        for (const p of pieces) {
+          p.x += p.vx;
+          p.y += p.vy;
+          p.rot += p.vr;
+          p.vy += 0.1; // gravity
+          
           ctx.save();
-          ctx.translate(p.x,p.y);
-          ctx.rotate(p.rot * Math.PI/180);
+          ctx.translate(p.x, p.y);
+          ctx.rotate(p.rot * Math.PI / 180);
           ctx.fillStyle = p.color;
-          ctx.fillRect(-p.size/2,-p.size/2,p.size,p.size*0.6);
+          ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size * 0.6);
           ctx.restore();
         }
-        if(time>120){ clearInterval(id); ctx.clearRect(0,0,W,H); }
-      },1000/60);
+        
+        if (time > 180) { // Longer animation
+          clearInterval(id);
+          ctx.clearRect(0, 0, W, H);
+          confettiActive = false;
+        }
+      }, 1000 / 60);
     }
 
-    function resizeCanvas(){
+    function resizeCanvas() {
       const c = document.getElementById('confetti-canvas');
-      c.width = window.innerWidth; c.height = window.innerHeight;
+      c.width = window.innerWidth;
+      c.height = window.innerHeight;
     }
+    
     window.addEventListener('resize', resizeCanvas);
     resizeCanvas();
 
-    // Make the No button harder to catch after a few moves by swapping with Yes sometimes
-    noBtn.addEventListener('mouseenter', ()=>{
-      if(Math.random() < 0.25){ // 25% chance
-        // swap positions
-        const yesRect = yesBtn.getBoundingClientRect();
-        const noRect = noBtn.getBoundingClientRect();
-        const yesX = yesRect.left - yesRect.width/2;
-        // visually swap texts
-        const t = yesBtn.textContent; yesBtn.textContent = noBtn.textContent; noBtn.textContent = t;
-        setTimeout(()=>{ // swap back after a little while
-          const t2 = yesBtn.textContent; yesBtn.textContent = t2; // noop to keep it playful
-        },800);
+    // Accessibility: keyboard users can choose
+    yesBtn.addEventListener('keyup', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        yesBtn.click();
       }
     });
-
-    // Accessibility: keyboard users can choose
-    yesBtn.addEventListener('keyup', (e)=>{ if(e.key === 'Enter' || e.key === ' ') yesBtn.click(); });
-    noBtn.addEventListener('keyup', (e)=>{ if(e.key === 'Enter' || e.key === ' ') noBtn.click(); });
+    
+    noBtn.addEventListener('keyup', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        noBtn.click();
+      }
+    });
 
   </script>
 </body>
